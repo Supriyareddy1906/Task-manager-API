@@ -71,7 +71,7 @@ jobs:
           script: |
             export DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}
             export IMAGE_TAG=${{ github.sha }}
-            cd /home/ubuntu/task-manager-api
+            cd /home/ubuntu/Task-manager-API
             git pull origin main
             chmod +x scripts/deploy.sh
             ./scripts/deploy.sh
