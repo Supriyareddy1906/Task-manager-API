@@ -5,8 +5,8 @@
 #
 set -euo pipefail
 
-APP_DIR="/home/ubuntu/task-manager-api"
-IMAGE_NAME="${DOCKER_IMAGE:-yourdockerhubuser/task-manager-api}"
+APP_DIR="/home/ubuntu/Task-manager-API"
+IMAGE_NAME="${DOCKER_IMAGE:-supriya9606/task-manager-api}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 
