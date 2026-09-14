@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -20,7 +18,7 @@ services:
       retries: 5
 
   app:
-    build: .
+    image: supriya9606/task-manager-api:latest
     container_name: taskmanager-app
     restart: unless-stopped
     depends_on:
@@ -31,37 +29,5 @@ services:
     ports:
       - "8000:8000"
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: taskmanager-prometheus
-    restart: unless-stopped
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    depends_on:
-      - app
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: taskmanager-grafana
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-    depends_on:
-      - prometheus
-
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: taskmanager-node-exporter
-    restart: unless-stopped
-    ports:
-      - "9100:9100"
-
 volumes:
   pgdata:
-  grafana-data:
