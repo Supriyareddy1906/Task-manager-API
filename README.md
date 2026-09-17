@@ -448,3 +448,4 @@ This project demonstrates how a simple application can be transformed into an au
 
 From **code commit to testing, Docker image creation, container registry, cloud deployment, health monitoring, and failure alerts**, the complete process is automated using the DevOps tools and concepts used in this project.
    
+
