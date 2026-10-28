@@ -1,4 +1,6 @@
 
+
+
 pipeline {
     agent any
 
@@ -32,7 +34,10 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t supriya9606/task-manager-api:latest .'
+                sh '''
+                    docker build \
+                      -t supriya9606/task-manager-api:latest .
+                '''
             }
         }
 
@@ -52,6 +57,7 @@ pipeline {
                             --password-stdin
 
                         docker push supriya9606/task-manager-api:latest
+
                         docker logout
                     '''
                 }
@@ -68,23 +74,34 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
+                        set -eu
+
+                        KUBECONFIG_FILE=/var/jenkins_home/.kube/deploy-config
+
+                        echo "Checking Kubernetes connection..."
 
                         kubectl \
-                          --kubeconfig=/var/jenkins_home/.kube/config \
-                          --namespace=task-manager \
-                          get deployment task-manager-api
+                          --kubeconfig="$KUBECONFIG_FILE" \
+                          get deployment task-manager-api \
+                          -n task-manager
+
+                        echo "Updating Kubernetes deployment..."
 
                         kubectl \
-                          --kubeconfig=/var/jenkins_home/.kube/config \
-                          --namespace=task-manager \
+                          --kubeconfig="$KUBECONFIG_FILE" \
                           set image deployment/task-manager-api \
-                          task-manager-api=supriya9606/task-manager-api:latest
+                          task-manager-api=supriya9606/task-manager-api:latest \
+                          -n task-manager
+
+                        echo "Waiting for deployment rollout..."
 
                         kubectl \
-                          --kubeconfig=/var/jenkins_home/.kube/config \
-                          --namespace=task-manager \
+                          --kubeconfig="$KUBECONFIG_FILE" \
                           rollout status deployment/task-manager-api \
+                          -n task-manager \
                           --timeout=180s
+
+                        echo "Kubernetes deployment completed."
                     '''
                 }
             }
@@ -93,7 +110,7 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Tests passed, image pushed, and Kubernetes deployment completed!'
+            echo 'SUCCESS: Tests passed, Docker image pushed, and Kubernetes deployment completed!'
         }
 
         failure {
