@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -51,8 +52,39 @@ pipeline {
                             --password-stdin
 
                         docker push supriya9606/task-manager-api:latest
-
                         docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'k8s-deployer-token',
+                        variable: 'K8S_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+
+                        kubectl \
+                          --kubeconfig=/var/jenkins_home/.kube/config \
+                          --namespace=task-manager \
+                          get deployment task-manager-api
+
+                        kubectl \
+                          --kubeconfig=/var/jenkins_home/.kube/config \
+                          --namespace=task-manager \
+                          set image deployment/task-manager-api \
+                          task-manager-api=supriya9606/task-manager-api:latest
+
+                        kubectl \
+                          --kubeconfig=/var/jenkins_home/.kube/config \
+                          --namespace=task-manager \
+                          rollout status deployment/task-manager-api \
+                          --timeout=180s
                     '''
                 }
             }
@@ -61,7 +93,7 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Tests passed, Docker image built and pushed to Docker Hub!'
+            echo 'SUCCESS: Tests passed, image pushed, and Kubernetes deployment completed!'
         }
 
         failure {
