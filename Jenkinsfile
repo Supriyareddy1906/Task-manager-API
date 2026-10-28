@@ -1,42 +1,44 @@
-
-
-
 pipeline {
     agent any
 
+    environment {
+        DOCKER_IMAGE = 'supriya9606/task-manager-api'
+        K8S_NAMESPACE = 'task-manager'
+        K8S_DEPLOYMENT = 'task-manager-api'
+        K8S_CONTAINER = 'task-manager-api'
+        KUBECONFIG_FILE = '/var/jenkins_home/.kube/deploy-config'
+    }
+
     stages {
 
-        stage('Checkout') {
+        stage('Git Checkout') {
             steps {
                 checkout scm
             }
         }
 
         stage('Run Tests') {
-            agent {
-                docker {
-                    image 'python:3.12-slim'
-                    reuseNode true
-                }
-            }
-
-            environment {
-                HOME = "${WORKSPACE}"
-                PIP_CACHE_DIR = "${WORKSPACE}/.pip-cache"
-            }
-
             steps {
-                sh 'python --version'
-                sh 'python -m pip install -r requirements.txt'
-                sh 'python -m pytest tests/ -v'
+                sh '''
+                    set -eu
+                    docker run --rm \
+                      -v "$WORKSPACE:/app" \
+                      -w /app \
+                      -e HOME=/tmp \
+                      -e PIP_CACHE_DIR=/tmp/pip-cache \
+                      python:3.12-slim \
+                      sh -c "pip install --no-cache-dir -r requirements.txt && python -m pytest tests/ -v"
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 sh '''
+                    set -eu
                     docker build \
-                      -t supriya9606/task-manager-api:latest .
+                      -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
+                      -t "$DOCKER_IMAGE:latest" .
                 '''
             }
         }
@@ -46,17 +48,20 @@ pipeline {
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKERHUB_USERNAME',
-                        passwordVariable: 'DOCKERHUB_TOKEN'
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASSWORD'
                     )
                 ]) {
                     sh '''
                         set +x
-                        echo "$DOCKERHUB_TOKEN" | docker login \
-                            -u "$DOCKERHUB_USERNAME" \
-                            --password-stdin
+                        set -eu
 
-                        docker push supriya9606/task-manager-api:latest
+                        echo "$DOCKER_PASSWORD" | docker login \
+                          --username "$DOCKER_USER" \
+                          --password-stdin
+
+                        docker push "$DOCKER_IMAGE:$BUILD_NUMBER"
+                        docker push "$DOCKER_IMAGE:latest"
 
                         docker logout
                     '''
@@ -76,32 +81,31 @@ pipeline {
                         set +x
                         set -eu
 
-                        KUBECONFIG_FILE=/var/jenkins_home/.kube/deploy-config
+                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
+                          config set-credentials jenkins-deployer \
+                          --token="$K8S_TOKEN"
 
                         echo "Checking Kubernetes connection..."
 
-                        kubectl \
-                          --kubeconfig="$KUBECONFIG_FILE" \
-                          get deployment task-manager-api \
-                          -n task-manager
+                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
+                          get deployment "$K8S_DEPLOYMENT" \
+                          -n "$K8S_NAMESPACE"
 
-                        echo "Updating Kubernetes deployment..."
+                        echo "Deploying image..."
 
-                        kubectl \
-                          --kubeconfig="$KUBECONFIG_FILE" \
-                          set image deployment/task-manager-api \
-                          task-manager-api=supriya9606/task-manager-api:latest \
-                          -n task-manager
+                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
+                          set image deployment/"$K8S_DEPLOYMENT" \
+                          "$K8S_CONTAINER=$DOCKER_IMAGE:$BUILD_NUMBER" \
+                          -n "$K8S_NAMESPACE"
 
-                        echo "Waiting for deployment rollout..."
+                        echo "Waiting for rollout..."
 
-                        kubectl \
-                          --kubeconfig="$KUBECONFIG_FILE" \
-                          rollout status deployment/task-manager-api \
-                          -n task-manager \
+                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
+                          rollout status deployment/"$K8S_DEPLOYMENT" \
+                          -n "$K8S_NAMESPACE" \
                           --timeout=180s
 
-                        echo "Kubernetes deployment completed."
+                        echo "Deployment completed successfully."
                     '''
                 }
             }
@@ -110,11 +114,11 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Tests passed, Docker image pushed, and Kubernetes deployment completed!'
+            echo 'Pipeline completed successfully!'
         }
 
         failure {
-            echo 'FAILED: Check the Console Output for the error.'
+            echo 'Pipeline failed. Check the failed stage in the console output.'
         }
 
         always {
