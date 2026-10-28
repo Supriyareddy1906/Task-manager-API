@@ -27,8 +27,8 @@ pipeline {
                     ls -ld tests
 
                     docker run --rm \
-                      --mount type=bind,source="$WORKSPACE",target=/app \
-                      --workdir /app \
+                      --volumes-from jenkins-local \
+                      --workdir "$WORKSPACE" \
                       --entrypoint sh \
                       python:3.12-slim \
                       -c 'ls -l requirements.txt && pip install --no-cache-dir -r requirements.txt && python -m pytest tests/ -v'
@@ -40,7 +40,6 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-
                     docker build \
                       -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
                       -t "$DOCKER_IMAGE:latest" .
