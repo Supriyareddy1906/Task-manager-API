@@ -21,13 +21,17 @@ pipeline {
             steps {
                 sh '''
                     set -eu
+
+                    echo "Checking project files..."
+                    ls -l requirements.txt
+                    ls -ld tests
+
                     docker run --rm \
-                      -v "$WORKSPACE:/app" \
-                      -w /app \
-                      -e HOME=/tmp \
-                      -e PIP_CACHE_DIR=/tmp/pip-cache \
+                      --mount type=bind,source="$WORKSPACE",target=/app \
+                      --workdir /app \
+                      --entrypoint sh \
                       python:3.12-slim \
-                      sh -c "pip install --no-cache-dir -r requirements.txt && python -m pytest tests/ -v"
+                      -c 'ls -l requirements.txt && pip install --no-cache-dir -r requirements.txt && python -m pytest tests/ -v'
                 '''
             }
         }
@@ -36,6 +40,7 @@ pipeline {
             steps {
                 sh '''
                     set -eu
+
                     docker build \
                       -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
                       -t "$DOCKER_IMAGE:latest" .
