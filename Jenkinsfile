@@ -15,9 +15,12 @@ pipeline {
                     reuseNode true
                 }
             }
+            environment {
+                HOME = "${WORKSPACE}"
+                PIP_CACHE_DIR = "${WORKSPACE}/.pip-cache"
+            }
             steps {
                 sh 'python --version'
-                sh 'python -m pip install --upgrade pip'
                 sh 'python -m pip install -r requirements.txt'
                 sh 'python -m pytest tests/ -v'
             }
