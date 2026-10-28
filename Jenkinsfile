@@ -8,7 +8,7 @@ pipeline {
             }
         }
 
-        stage('Run Tests with Python 3.12') {
+        stage('Run Tests') {
             agent {
                 docker {
                     image 'python:3.12-slim'
@@ -23,6 +23,12 @@ pipeline {
                 sh 'python --version'
                 sh 'python -m pip install -r requirements.txt'
                 sh 'python -m pytest tests/ -v'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t supriya9606/task-manager-api:latest .'
             }
         }
     }
