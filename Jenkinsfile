@@ -8,21 +8,18 @@ pipeline {
             }
         }
 
-        stage('Create Python Environment') {
-            steps {
-                sh 'python3 -m venv .venv'
+        stage('Run Tests with Python 3.12') {
+            agent {
+                docker {
+                    image 'python:3.12-slim'
+                    reuseNode true
+                }
             }
-        }
-
-        stage('Install Dependencies') {
             steps {
-                sh '.venv/bin/python -m pip install -r requirements.txt'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                sh '.venv/bin/python -m pytest tests/ -v'
+                sh 'python --version'
+                sh 'python -m pip install --upgrade pip'
+                sh 'python -m pip install -r requirements.txt'
+                sh 'python -m pytest tests/ -v'
             }
         }
     }
