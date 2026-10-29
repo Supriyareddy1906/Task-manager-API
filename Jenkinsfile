@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -17,13 +18,13 @@ pipeline {
 
         stage('Run Tests') {
             steps {
-                echo 'Running Python tests...'
+                echo 'Running tests with Python 3.12...'
                 sh '''
-                    python3 -m venv venv
-                    . venv/bin/activate
-                    pip install --upgrade pip
-                    pip install -r requirements.txt
-                    python -m pytest tests/ -v
+                    docker run --rm \
+                      -v "$WORKSPACE:/app" \
+                      -w /app \
+                      python:3.12-slim \
+                      sh -c "pip install -r requirements.txt && python -m pytest tests/ -v"
                 '''
             }
         }
@@ -33,7 +34,6 @@ pipeline {
                 script {
                     env.IMAGE_TAG = "${BUILD_NUMBER}"
                 }
-
                 echo 'Building Docker image...'
                 sh '''
                     docker build \
@@ -60,7 +60,6 @@ pipeline {
 
                         docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
                         docker push ${DOCKER_IMAGE}:latest
-
                         docker logout
                     '''
                 }
@@ -75,8 +74,10 @@ pipeline {
                     echo "Checking Kubernetes connection..."
                     kubectl get nodes --kubeconfig="${K8S_CONFIG}"
 
-                    echo "Restarting Task Manager API deployment..."
-                    kubectl rollout restart deployment/task-manager-api \
+                    echo "Updating deployment image..."
+                    kubectl set image \
+                      deployment/task-manager-api \
+                      task-manager-api=${DOCKER_IMAGE}:${IMAGE_TAG} \
                       -n "${K8S_NAMESPACE}" \
                       --kubeconfig="${K8S_CONFIG}"
 
@@ -86,7 +87,7 @@ pipeline {
                       --timeout=120s \
                       --kubeconfig="${K8S_CONFIG}"
 
-                    echo "Checking deployment status..."
+                    echo "Checking pods and services..."
                     kubectl get pods -n "${K8S_NAMESPACE}" \
                       --kubeconfig="${K8S_CONFIG}"
 
@@ -107,7 +108,7 @@ pipeline {
         }
 
         failure {
-            echo 'Pipeline failed. Check Console Output for the failing stage.'
+            echo 'Pipeline failed. Check Console Output for details.'
         }
     }
 }
