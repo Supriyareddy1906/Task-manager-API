@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -21,8 +20,8 @@ pipeline {
                 echo 'Running tests with Python 3.12...'
                 sh '''
                     docker run --rm \
-                      -v "$WORKSPACE:/app" \
-                      -w /app \
+                      -v jenkins_home:/jenkinsdata \
+                      -w /jenkinsdata/workspace/Task-Manager-CI \
                       python:3.12-slim \
                       sh -c "pip install -r requirements.txt && python -m pytest tests/ -v"
                 '''
@@ -34,7 +33,9 @@ pipeline {
                 script {
                     env.IMAGE_TAG = "${BUILD_NUMBER}"
                 }
+
                 echo 'Building Docker image...'
+
                 sh '''
                     docker build \
                       -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
@@ -54,12 +55,14 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
+
                         echo "$DOCKERHUB_TOKEN" | docker login \
                           --username "$DOCKERHUB_USER" \
                           --password-stdin
 
                         docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
                         docker push ${DOCKER_IMAGE}:latest
+
                         docker logout
                     '''
                 }
@@ -72,7 +75,8 @@ pipeline {
                     set -e
 
                     echo "Checking Kubernetes connection..."
-                    kubectl get nodes --kubeconfig="${K8S_CONFIG}"
+                    kubectl get nodes \
+                      --kubeconfig="${K8S_CONFIG}"
 
                     echo "Updating deployment image..."
                     kubectl set image \
@@ -82,16 +86,20 @@ pipeline {
                       --kubeconfig="${K8S_CONFIG}"
 
                     echo "Waiting for deployment rollout..."
-                    kubectl rollout status deployment/task-manager-api \
+                    kubectl rollout status \
+                      deployment/task-manager-api \
                       -n "${K8S_NAMESPACE}" \
                       --timeout=120s \
                       --kubeconfig="${K8S_CONFIG}"
 
-                    echo "Checking pods and services..."
-                    kubectl get pods -n "${K8S_NAMESPACE}" \
+                    echo "Checking pods..."
+                    kubectl get pods \
+                      -n "${K8S_NAMESPACE}" \
                       --kubeconfig="${K8S_CONFIG}"
 
-                    kubectl get services -n "${K8S_NAMESPACE}" \
+                    echo "Checking services..."
+                    kubectl get services \
+                      -n "${K8S_NAMESPACE}" \
                       --kubeconfig="${K8S_CONFIG}"
                 '''
             }
