@@ -4,45 +4,41 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'supriya9606/task-manager-api'
         K8S_NAMESPACE = 'task-manager'
-        K8S_DEPLOYMENT = 'task-manager-api'
-        K8S_CONTAINER = 'task-manager-api'
-        KUBECONFIG_FILE = '/var/jenkins_home/.kube/deploy-config'
+        K8S_CONFIG = '/tmp/jenkins-kubeconfig'
     }
 
     stages {
-
         stage('Git Checkout') {
             steps {
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
         stage('Run Tests') {
             steps {
+                echo 'Running Python tests...'
                 sh '''
-                    set -eu
-
-                    echo "Checking project files..."
-                    ls -l requirements.txt
-                    ls -ld tests
-
-                    docker run --rm \
-                      --volumes-from jenkins-local \
-                      --workdir "$WORKSPACE" \
-                      --entrypoint sh \
-                      python:3.12-slim \
-                      -c 'ls -l requirements.txt && pip install --no-cache-dir -r requirements.txt && python -m pytest tests/ -v'
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    python -m pytest tests/ -v
                 '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
+                script {
+                    env.IMAGE_TAG = "${BUILD_NUMBER}"
+                }
+
+                echo 'Building Docker image...'
                 sh '''
-                    set -eu
                     docker build \
-                      -t "$DOCKER_IMAGE:$BUILD_NUMBER" \
-                      -t "$DOCKER_IMAGE:latest" .
+                      -t ${DOCKER_IMAGE}:${IMAGE_TAG} \
+                      -t ${DOCKER_IMAGE}:latest .
                 '''
             }
         }
@@ -51,21 +47,19 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASSWORD'
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
                     )
                 ]) {
                     sh '''
                         set +x
-                        set -eu
-
-                        echo "$DOCKER_PASSWORD" | docker login \
-                          --username "$DOCKER_USER" \
+                        echo "$DOCKERHUB_TOKEN" | docker login \
+                          --username "$DOCKERHUB_USER" \
                           --password-stdin
 
-                        docker push "$DOCKER_IMAGE:$BUILD_NUMBER"
-                        docker push "$DOCKER_IMAGE:latest"
+                        docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                        docker push ${DOCKER_IMAGE}:latest
 
                         docker logout
                     '''
@@ -75,58 +69,45 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'k8s-deployer-token',
-                        variable: 'K8S_TOKEN'
-                    )
-                ]) {
-                    sh '''
-                        set +x
-                        set -eu
+                sh '''
+                    set -e
 
-                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
-                          config set-credentials jenkins-deployer \
-                          --token="$K8S_TOKEN"
+                    echo "Checking Kubernetes connection..."
+                    kubectl get nodes --kubeconfig="${K8S_CONFIG}"
 
-                        echo "Checking Kubernetes connection..."
+                    echo "Restarting Task Manager API deployment..."
+                    kubectl rollout restart deployment/task-manager-api \
+                      -n "${K8S_NAMESPACE}" \
+                      --kubeconfig="${K8S_CONFIG}"
 
-                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
-                          get deployment "$K8S_DEPLOYMENT" \
-                          -n "$K8S_NAMESPACE"
+                    echo "Waiting for deployment rollout..."
+                    kubectl rollout status deployment/task-manager-api \
+                      -n "${K8S_NAMESPACE}" \
+                      --timeout=120s \
+                      --kubeconfig="${K8S_CONFIG}"
 
-                        echo "Deploying image..."
+                    echo "Checking deployment status..."
+                    kubectl get pods -n "${K8S_NAMESPACE}" \
+                      --kubeconfig="${K8S_CONFIG}"
 
-                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
-                          set image deployment/"$K8S_DEPLOYMENT" \
-                          "$K8S_CONTAINER=$DOCKER_IMAGE:$BUILD_NUMBER" \
-                          -n "$K8S_NAMESPACE"
-
-                        echo "Waiting for rollout..."
-
-                        kubectl --kubeconfig="$KUBECONFIG_FILE" \
-                          rollout status deployment/"$K8S_DEPLOYMENT" \
-                          -n "$K8S_NAMESPACE" \
-                          --timeout=180s
-
-                        echo "Deployment completed successfully."
-                    '''
-                }
+                    kubectl get services -n "${K8S_NAMESPACE}" \
+                      --kubeconfig="${K8S_CONFIG}"
+                '''
             }
         }
     }
 
     post {
+        always {
+            echo 'Pipeline execution completed.'
+        }
+
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'CI/CD pipeline completed successfully!'
         }
 
         failure {
-            echo 'Pipeline failed. Check the failed stage in the console output.'
-        }
-
-        always {
-            echo 'Pipeline execution finished.'
+            echo 'Pipeline failed. Check Console Output for the failing stage.'
         }
     }
 }
