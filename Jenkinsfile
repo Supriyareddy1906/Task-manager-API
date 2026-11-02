@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -6,8 +5,10 @@ pipeline {
         DOCKER_IMAGE = 'supriya9606/task-manager-api'
         DOCKER_TAG = 'latest'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
+
         ANSIBLE_INVENTORY = '/var/lib/jenkins/ansible-practice/inventory'
         ANSIBLE_KEY = '/var/lib/jenkins/.ssh/ansible-key.pem'
+        ANSIBLE_PLAYBOOK = '/var/lib/jenkins/ansible-practice/deploy.yml'
     }
 
     stages {
@@ -44,6 +45,7 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 echo 'Pushing image to Docker Hub...'
+
                 withCredentials([
                     usernamePassword(
                         credentialsId: "${DOCKER_CREDENTIALS}",
@@ -66,10 +68,11 @@ pipeline {
         stage('Deploy using Ansible') {
             steps {
                 echo 'Deploying Task Manager API to EC2...'
+
                 sh '''
                     ansible-playbook \
                       -i ${ANSIBLE_INVENTORY} \
-                      deploy.yml \
+                      ${ANSIBLE_PLAYBOOK} \
                       --private-key=${ANSIBLE_KEY} \
                       -b
                 '''
@@ -79,6 +82,7 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 echo 'Checking API health...'
+
                 sh '''
                     ansible webservers \
                       -i ${ANSIBLE_INVENTORY} \
@@ -95,9 +99,11 @@ pipeline {
         success {
             echo 'Pipeline completed successfully!'
         }
+
         failure {
             echo 'Pipeline failed. Check Console Output.'
         }
+
         always {
             echo 'Pipeline execution completed.'
         }
